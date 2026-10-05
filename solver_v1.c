@@ -279,7 +279,7 @@ static unsigned long nodes;     /* states visited in total */
 /* Depth-first search below one state. g is the number of moves made so
  * far. Returns 1 and leaves the solution in path[0..g-1] when the solved
  * state is reached within bound; returns 0 otherwise. */
-static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound)
+static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound, uint8_t last_face)
 {
     ++nodes;
     uint8_t hh = h(p, o);
@@ -288,17 +288,20 @@ static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound)
     if (hh == 0)
         return 1;               /* both PDB values are 0: solved */
     for (uint8_t face = 0; face < 3; ++face) {
+        if (face == last_face)
+            continue;           /* never turn the same face twice in a row */
         uint16_t np = p, no = o;
         for (uint8_t turn = 0; turn < 3; ++turn) {
             np = trans_p[face][np];
             no = trans_o[face][no];
             path[g] = (uint8_t) (face * 3U + turn);
-            if (dfs(np, no, (uint8_t) (g + 1U), bound))
+            if (dfs(np, no, (uint8_t) (g + 1U), bound, face))
                 return 1;
         }
     }
     return 0;
 }
+
 
 /* Iterative deepening: try bound = h(start), h(start) + 1, ... until a
  * solution is found. Returns its length, and the moves are in path[]. */
@@ -307,7 +310,7 @@ static uint8_t solve(const state_t *state)
     nodes = 0;
     uint16_t p = rank_p(state), o = rank_o(state);
     for (uint8_t bound = h(p, o); bound <= 11; ++bound) {
-        if (dfs(p, o, 0, bound))
+        if (dfs(p, o, 0, bound, 3))
             return bound;
     }
     return 255;                  /* should not happen for a valid state */
