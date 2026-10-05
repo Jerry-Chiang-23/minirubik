@@ -276,27 +276,30 @@ static uint8_t h(uint16_t p, uint16_t o)
 
 static uint8_t path[12];        /* the current path: one move per depth */
 static unsigned long nodes;     /* states visited in total */
+static unsigned long calls;     /* Calls expand() how many times */
 /* Depth-first search below one state. g is the number of moves made so
  * far. Returns 1 and leaves the solution in path[0..g-1] when the solved
  * state is reached within bound; returns 0 otherwise. */
-static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound, uint8_t last_face)
+/* Renamed from dfs(). Each child is tested against the bound
+ * before recursing, so a pruned child costs no function call. */
+static int expand(uint16_t p, uint16_t o, uint8_t g, uint8_t bound,
+                  uint8_t last_face)
 {
-    ++nodes;
-    uint8_t hh = h(p, o);
-    if (g + hh > bound)
-        return 0;               /* cannot finish within bound: prune */
-    if (hh == 0)
-        return 1;               /* both PDB values are 0: solved */
+    ++calls;
     for (uint8_t face = 0; face < 3; ++face) {
         if (face == last_face)
-            continue;           /* never turn the same face twice in a row */
+            continue;
         uint16_t np = p, no = o;
         for (uint8_t turn = 0; turn < 3; ++turn) {
             np = trans_p[face][np];
             no = trans_o[face][no];
+            ++nodes;                        /* Counted per child */
+            uint8_t hh = h(np, no);         /* h() of the child */
+            if (g + 1 + hh > bound)         /* Prune before the call */
+                continue;
             path[g] = (uint8_t) (face * 3U + turn);
-            if (dfs(np, no, (uint8_t) (g + 1U), bound, face))
-                return 1;
+            if (hh == 0 || expand(np, no, (uint8_t) (g + 1U), bound, face))
+                return 1;                   /* Solved test on the child */
         }
     }
     return 0;
@@ -308,9 +311,12 @@ static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound, uint8_t last_fa
 static uint8_t solve(const state_t *state)
 {
     nodes = 0;
+    calls = 0; 
     uint16_t p = rank_p(state), o = rank_o(state);
-    for (uint8_t bound = h(p, o); bound <= 11; ++bound) {
-        if (dfs(p, o, 0, bound, 3))
+    uint8_t h0 = h(p, o);
+    for (uint8_t bound = h0; bound <= 11; ++bound) {
+        ++nodes;
+        if (h0 == 0 || expand(p, o, 0, bound, 3))
             return bound;
     }
     return 255;                  /* should not happen for a valid state */
@@ -480,7 +486,7 @@ int main(int argc, char **argv)
             separator = " ";
         }
         putchar('\n');
-        fprintf(stderr, "nodes=%lu\n", nodes);
+        fprintf(stderr, "nodes=%lu calls=%lu\n", nodes, calls);
         return output_failed();
     }
 
