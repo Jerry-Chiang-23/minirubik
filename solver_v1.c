@@ -39,6 +39,12 @@ static const uint8_t twist[3][CUBIES] = {
     {0, 0, 0, 0, 0, 0, 0},
 };
 
+/* Search tables, filled once by build_search_tables(). */
+static uint16_t trans_p[3][PERMUTATIONS];
+static uint16_t trans_o[3][ORIENTATIONS];
+static uint8_t pdb_p[PERMUTATIONS];
+static uint8_t pdb_o[ORIENTATIONS];
+
 /* The three quarter-turns preserve the fixed front-upper-left corner. */
 /*@ requires face < 3;
     assigns \nothing;
@@ -251,6 +257,23 @@ static int build_pdb(const uint16_t *trans, uint16_t n, uint8_t *dist)
     return tail == n;               /* 1 if every state was reached */
 }
 
+/* Build both transition tables and both pattern databases.
+ * Returns 1 on success, 0 if a table is incomplete. */
+static int build_search_tables(void)
+{
+    build_transition(trans_p, trans_o);
+    return build_pdb(&trans_p[0][0], PERMUTATIONS, pdb_p) &&
+           build_pdb(&trans_o[0][0], ORIENTATIONS, pdb_o);
+}
+
+/* Lower bound on the moves still needed from the state with permutation
+ * rank p and orientation rank o: the larger of the two PDB values. */
+static uint8_t h(uint16_t p, uint16_t o)
+{
+    uint8_t hp = pdb_p[p], ho = pdb_o[o];
+    return hp > ho ? hp : ho;
+}
+
 static uint8_t *build_table(uint8_t *diameter)
 {
     uint8_t *toward_solved = malloc(STATES);
@@ -388,6 +411,14 @@ int main(int argc, char **argv)
         printf("p=%u o=%u full=%u check=%u\n",
             rank_p(&state), rank_o(&state), rank_state(&state),
             rank_p(&state) * ORIENTATIONS + rank_o(&state));
+        return output_failed();
+    }
+    if (argc == 3 && !strcmp(argv[1], "--h") && parse_state(argv[2], &state)) {
+        if (!build_search_tables()) {
+            fputs("could not build search tables\n", stderr);
+            return 1;
+        }
+        printf("h=%u\n", h(rank_p(&state), rank_o(&state)));
         return output_failed();
     }
 
