@@ -74,6 +74,25 @@ static state_t apply_move(state_t state, uint8_t move)
     return state;
 }
 
+
+static uint16_t rank_p(const state_t *state){
+    uint16_t p = 0;
+    for (uint8_t i = 0; i < CUBIES; ++i) {
+        uint8_t smaller = 0;
+        for (uint8_t j = (uint8_t) (i + 1U); j < CUBIES; ++j)
+            if (state->p[j] < state->p[i])
+                ++smaller;
+        p = (uint16_t)(p * (CUBIES - i) + smaller);
+    }
+    return p;
+}
+static uint16_t rank_o(const state_t *state){
+    uint16_t o = 0;
+    for (uint8_t i = 0; i < 6; ++i)
+        o = (uint16_t)(o * 3U + state->o[i]);
+    return o;
+}
+
 /*@ requires \valid_read(state);
     requires \forall integer i; 0 <= i < CUBIES ==>
       0 <= state->p[i] < CUBIES;
@@ -189,7 +208,7 @@ static int valid(const state_t *state)
 }
 
 // 
-static void *build_transition(uint16_t permutation[3][PERMUTATIONS], uint16_t orientation[3][ORIENTATIONS]){
+static void build_transition(uint16_t permutation[3][PERMUTATIONS], uint16_t orientation[3][ORIENTATIONS]){
     state_t state;
     for (uint16_t rank = 0; rank < PERMUTATIONS; ++rank) {
         unrank_state((uint32_t) rank * ORIENTATIONS, &state);
@@ -238,7 +257,7 @@ static uint8_t *build_table(uint8_t *diameter)
     uint32_t *queue = malloc((size_t) STATES * sizeof *queue);
     uint16_t permutation[3][PERMUTATIONS], orientation[3][ORIENTATIONS];
     uint32_t head = 0, tail = 1, level_end = 1;
-    state_t state;
+    // state_t state;
     if (!toward_solved || !queue) {
         free(toward_solved);
         free(queue);
@@ -363,6 +382,12 @@ int main(int argc, char **argv)
             for (int i = 0; i < ORIENTATIONS; i++) co += (pdb_orient[i] == d);
             printf("d=%2d perm=%4d orient=%3d\n", d, cp, co);
         }
+        return output_failed();
+    }
+    if (argc == 3 && !strcmp(argv[1], "--rank") && parse_state(argv[2], &state)) {
+        printf("p=%u o=%u full=%u check=%u\n",
+            rank_p(&state), rank_o(&state), rank_state(&state),
+            rank_p(&state) * ORIENTATIONS + rank_o(&state));
         return output_failed();
     }
 
