@@ -274,6 +274,45 @@ static uint8_t h(uint16_t p, uint16_t o)
     return hp > ho ? hp : ho;
 }
 
+static uint8_t path[12];        /* the current path: one move per depth */
+static unsigned long nodes;     /* states visited in total */
+/* Depth-first search below one state. g is the number of moves made so
+ * far. Returns 1 and leaves the solution in path[0..g-1] when the solved
+ * state is reached within bound; returns 0 otherwise. */
+static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound)
+{
+    ++nodes;
+    uint8_t hh = h(p, o);
+    if (g + hh > bound)
+        return 0;               /* cannot finish within bound: prune */
+    if (hh == 0)
+        return 1;               /* both PDB values are 0: solved */
+    for (uint8_t face = 0; face < 3; ++face) {
+        uint16_t np = p, no = o;
+        for (uint8_t turn = 0; turn < 3; ++turn) {
+            np = trans_p[face][np];
+            no = trans_o[face][no];
+            path[g] = (uint8_t) (face * 3U + turn);
+            if (dfs(np, no, (uint8_t) (g + 1U), bound))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/* Iterative deepening: try bound = h(start), h(start) + 1, ... until a
+ * solution is found. Returns its length, and the moves are in path[]. */
+static uint8_t solve(const state_t *state)
+{
+    uint16_t p = rank_p(state), o = rank_o(state);
+    for (uint8_t bound = h(p, o); bound <= 11; ++bound) {
+        nodes = 0;
+        if (dfs(p, o, 0, bound))
+            return bound;
+    }
+    return 255;                  /* should not happen for a valid state */
+}
+
 static uint8_t *build_table(uint8_t *diameter)
 {
     uint8_t *toward_solved = malloc(STATES);
@@ -419,6 +458,26 @@ int main(int argc, char **argv)
             return 1;
         }
         printf("h=%u\n", h(rank_p(&state), rank_o(&state)));
+        return output_failed();
+    }
+
+    if (argc == 3 && !strcmp(argv[1], "--ida") && parse_state(argv[2], &state)) {
+        if (!build_search_tables()) {
+            fputs("could not build search tables\n", stderr);
+            return 1;
+        }
+        uint8_t len = solve(&state);
+        if (len == 255) {
+            fputs("no solution found\n", stderr);
+            return 1;
+        }
+        const char *separator = "";
+        for (uint8_t i = 0; i < len; ++i) {
+            printf("%s%s", separator, move_names[path[i]]);
+            separator = " ";
+        }
+        putchar('\n');
+        fprintf(stderr, "nodes=%lu\n", nodes);
         return output_failed();
     }
 
