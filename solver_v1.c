@@ -304,9 +304,9 @@ static int dfs(uint16_t p, uint16_t o, uint8_t g, uint8_t bound)
  * solution is found. Returns its length, and the moves are in path[]. */
 static uint8_t solve(const state_t *state)
 {
+    nodes = 0;
     uint16_t p = rank_p(state), o = rank_o(state);
     for (uint8_t bound = h(p, o); bound <= 11; ++bound) {
-        nodes = 0;
         if (dfs(p, o, 0, bound))
             return bound;
     }
