@@ -364,10 +364,51 @@ static uint8_t exact_distance(const uint8_t *table, uint32_t rank)
     return d;
 }
 
+/* H2 for the transition tables: for each face, the row must be a
+ * permutation of 0..n-1 (every entry reached exactly once), and four
+ * quarter turns must return to the starting rank. */
+static int check_transitions(void)
+{
+    for (uint8_t face = 0; face < 3; ++face) {
+        static uint8_t seen_p[PERMUTATIONS], seen_o[ORIENTATIONS];
+        memset(seen_p, 0, sizeof seen_p);
+        memset(seen_o, 0, sizeof seen_o);
+        for (uint16_t i = 0; i < PERMUTATIONS; ++i) {
+            uint16_t t = trans_p[face][i];
+            if (t >= PERMUTATIONS || seen_p[t])
+                return 0;
+            seen_p[t] = 1;
+            uint16_t x = i;
+            for (uint8_t k = 0; k < 4; ++k)
+                x = trans_p[face][x];
+            if (x != i)
+                return 0;
+        }
+        for (uint16_t i = 0; i < ORIENTATIONS; ++i) {
+            uint16_t t = trans_o[face][i];
+            if (t >= ORIENTATIONS || seen_o[t])
+                return 0;
+            seen_o[t] = 1;
+            uint16_t x = i;
+            for (uint8_t k = 0; k < 4; ++k)
+                x = trans_o[face][x];
+            if (x != i)
+                return 0;
+        }
+    }
+    return 1;
+}
+
 /* H2: both pattern databases fully populated, solved entry is 0, and
  * report the maximum value. H1: h(s) <= d(s) for every state. */
 static int check_tables(const uint8_t *table)
 {
+    if (!check_transitions()) {
+        puts("H2: transition tables are not permutations");
+        return 0;
+    }
+    puts("H2: transition tables are permutations, four turns return");
+    
     uint8_t max_p = 0, max_o = 0;
     for (uint16_t i = 0; i < PERMUTATIONS; ++i) {
         if (pdb_p[i] == UINT8_MAX)
