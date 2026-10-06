@@ -277,6 +277,9 @@ static uint8_t h(uint16_t p, uint16_t o)
 static uint8_t path[12];        /* the current path: one move per depth */
 static unsigned long nodes;     /* states visited in total */
 static unsigned long calls;     /* Calls expand() how many times */
+static uint16_t sp[12], so[12];     /* state expanded at this depth */
+static uint16_t cp[12], co[12];     /* state after the turns tried so far */
+static uint8_t face_at[12], turn_at[12], last_at[12];
 /* iterative replacement for expand(). It visits states in the
  * same order, so nodes and calls must match the recursive version. */
 static int search(uint16_t p, uint16_t o, uint8_t bound)
@@ -339,10 +342,57 @@ static uint8_t solve(const state_t *state)
     uint8_t h0 = h(p, o);
     for (uint8_t bound = h0; bound <= 11; ++bound) {
         ++nodes;
-        if (h0 == 0 || expand(p, o, 0, bound))
+        if (h0 == 0 || search(p, o, bound))
             return bound;
     }
     return 255;                  /* should not happen for a valid state */
+}
+
+/* Exact distance of a state: follow the BFS table of build_table()
+ * back to the solved state and count the moves. */
+static uint8_t exact_distance(const uint8_t *table, uint32_t rank)
+{
+    state_t s;
+    unrank_state(rank, &s);
+    uint8_t d = 0;
+    uint32_t r = rank;
+    while (r) {
+        s = apply_move(s, table[r]);
+        ++d;
+        r = rank_state(&s);
+    }
+    return d;
+}
+
+/* H2: both pattern databases fully populated, solved entry is 0, and
+ * report the maximum value. H1: h(s) <= d(s) for every state. */
+static int check_tables(const uint8_t *table)
+{
+    uint8_t max_p = 0, max_o = 0;
+    for (uint16_t i = 0; i < PERMUTATIONS; ++i) {
+        if (pdb_p[i] == UINT8_MAX)
+            return 0;                       /* entry never reached by the BFS */
+        if (pdb_p[i] > max_p)
+            max_p = pdb_p[i];
+    }
+    for (uint16_t i = 0; i < ORIENTATIONS; ++i) {
+        if (pdb_o[i] == UINT8_MAX)
+            return 0;
+        if (pdb_o[i] > max_o)
+            max_o = pdb_o[i];
+    }
+    printf("H2: pdb_p[0]=%u max_p=%u, pdb_o[0]=%u max_o=%u\n",
+           pdb_p[0], max_p, pdb_o[0], max_o);
+
+    unsigned long bad = 0;
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+        state_t s;
+        unrank_state(rank, &s);
+        if (h(rank_p(&s), rank_o(&s)) > exact_distance(table, rank))
+            ++bad;
+    }
+    printf("H1: %lu states with h > d\n", bad);
+    return pdb_p[0] == 0 && pdb_o[0] == 0 && bad == 0;
 }
 
 static uint8_t *build_table(uint8_t *diameter)
@@ -512,6 +562,19 @@ int main(int argc, char **argv)
         fprintf(stderr, "nodes=%lu calls=%lu\n", nodes, calls);
         return output_failed();
     }
+
+    if (argc == 2 && !strcmp(argv[1], "--check")) {
+        uint8_t *table = build_table(&diameter);
+        if (!table || !build_search_tables()) {
+            fputs("could not build tables\n", stderr);
+            return 1;
+        }
+        int ok = check_tables(table);
+        free(table);
+        puts(ok ? "H1 and H2 pass" : "H1 or H2 FAILED");
+        return ok ? output_failed() : 1;
+    }
+
 
     if (argc == 2 && !strcmp(argv[1], "--self-test")) {
         if (!self_test()) {
