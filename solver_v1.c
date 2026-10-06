@@ -45,6 +45,13 @@ static uint16_t trans_o[3][ORIENTATIONS];
 static uint8_t pdb_p[PERMUTATIONS];
 static uint8_t pdb_o[ORIENTATIONS];
 
+/* One array per face, so that search() needs no face * row-length
+ * multiplication. Filled from trans_p / trans_o by build_search_tables(). */
+static uint16_t tp0[PERMUTATIONS], tp1[PERMUTATIONS], tp2[PERMUTATIONS];
+static uint16_t to0[ORIENTATIONS], to1[ORIENTATIONS], to2[ORIENTATIONS];
+static uint16_t *const tp[3] = {tp0, tp1, tp2};
+static uint16_t *const to[3] = {to0, to1, to2};
+
 /* The three quarter-turns preserve the fixed front-upper-left corner. */
 /*@ requires face < 3;
     assigns \nothing;
@@ -273,6 +280,12 @@ static int build_pdb(const uint16_t *trans, uint16_t n, uint8_t *dist)
 static int build_search_tables(void)
 {
     build_transition(trans_p, trans_o);
+    memcpy(tp0, trans_p[0], sizeof tp0);
+    memcpy(tp1, trans_p[1], sizeof tp1);
+    memcpy(tp2, trans_p[2], sizeof tp2);
+    memcpy(to0, trans_o[0], sizeof to0);
+    memcpy(to1, trans_o[1], sizeof to1);
+    memcpy(to2, trans_o[2], sizeof to2);
     return build_pdb(&trans_p[0][0], PERMUTATIONS, pdb_p) &&
            build_pdb(&trans_o[0][0], ORIENTATIONS, pdb_o);
 }
@@ -323,8 +336,8 @@ static int search(uint16_t p, uint16_t o, uint8_t bound)
         }
         uint8_t face = face_at[g];
         uint8_t turn = turn_at[g]++;
-        cp[g] = trans_p[face][cp[g]];
-        co[g] = trans_o[face][co[g]];
+        cp[g] = tp[face][cp[g]];
+        co[g] = to[face][co[g]];
         ++nodes;
         uint8_t hh = h(cp[g], co[g]);
         if (g + 1 + hh > bound)
@@ -385,6 +398,8 @@ static int check_transitions(void)
         memset(seen_p, 0, sizeof seen_p);
         memset(seen_o, 0, sizeof seen_o);
         for (uint16_t i = 0; i < PERMUTATIONS; ++i) {
+            if (tp[face][i] != trans_p[face][i])
+                return 0;
             uint16_t t = trans_p[face][i];
             if (t >= PERMUTATIONS || seen_p[t])
                 return 0;
@@ -396,6 +411,8 @@ static int check_transitions(void)
                 return 0;
         }
         for (uint16_t i = 0; i < ORIENTATIONS; ++i) {
+            if (to[face][i] != trans_o[face][i])
+                return 0;
             uint16_t t = trans_o[face][i];
             if (t >= ORIENTATIONS || seen_o[t])
                 return 0;
