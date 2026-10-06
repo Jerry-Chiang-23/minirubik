@@ -395,6 +395,47 @@ static int check_tables(const uint8_t *table)
     return pdb_p[0] == 0 && pdb_o[0] == 0 && bad == 0;
 }
 
+/* H3 and worst case: run the search on every state whose exact distance
+ * is at least min_d, check that the returned length equals the exact
+ * distance, and remember the most expensive distance-11 state. */
+static int scan(const uint8_t *table, uint8_t min_d)
+{
+    unsigned long checked = 0, wrong = 0, count11 = 0;
+    unsigned long max_nodes = 0, max_calls = 0;
+    state_t worst;
+    memset(&worst, 0, sizeof worst);
+    for (uint32_t rank = 0; rank < STATES; ++rank) {
+        uint8_t d = exact_distance(table, rank);
+        if (d < min_d)
+            continue;
+        state_t s;
+        unrank_state(rank, &s);
+        uint8_t len = solve(&s);
+        ++checked;
+        if (len != d)
+            ++wrong;
+        if (d == 11) {
+            ++count11;
+            if (nodes > max_nodes) {
+                max_nodes = nodes;
+                worst = s;
+            }
+            if (calls > max_calls)
+                max_calls = calls;
+        }
+    }
+    printf("checked=%lu wrong=%lu distance-11 states=%lu\n",
+           checked, wrong, count11);
+    printf("distance-11 maximum: nodes=%lu calls=%lu\n", max_nodes, max_calls);
+    printf("most expensive distance-11 state: ");
+    for (uint8_t i = 0; i < CUBIES; ++i)
+        putchar('1' + worst.p[i]);
+    for (uint8_t i = 0; i < CUBIES; ++i)
+        putchar('1' + worst.o[i]);
+    putchar('\n');
+    return wrong == 0;
+}
+
 static uint8_t *build_table(uint8_t *diameter)
 {
     uint8_t *toward_solved = malloc(STATES);
@@ -575,6 +616,17 @@ int main(int argc, char **argv)
         return ok ? output_failed() : 1;
     }
 
+    if (argc == 2 && (!strcmp(argv[1], "--worst") || !strcmp(argv[1], "--h3"))) {
+        uint8_t *table = build_table(&diameter);
+        if (!table || !build_search_tables()) {
+            fputs("could not build tables\n", stderr);
+            return 1;
+        }
+        int ok = scan(table, !strcmp(argv[1], "--worst") ? 11 : 0);
+        free(table);
+        puts(ok ? "all lengths match the exact distance" : "MISMATCH FOUND");
+        return ok ? output_failed() : 1;
+    }
 
     if (argc == 2 && !strcmp(argv[1], "--self-test")) {
         if (!self_test()) {
