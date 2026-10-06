@@ -277,32 +277,55 @@ static uint8_t h(uint16_t p, uint16_t o)
 static uint8_t path[12];        /* the current path: one move per depth */
 static unsigned long nodes;     /* states visited in total */
 static unsigned long calls;     /* Calls expand() how many times */
-/* Depth-first search below one state. g is the number of moves made so
- * far. Returns 1 and leaves the solution in path[0..g-1] when the solved
- * state is reached within bound; returns 0 otherwise. */
-/* Renamed from dfs(). Each child is tested against the bound
- * before recursing, so a pruned child costs no function call. */
-static int expand(uint16_t p, uint16_t o, uint8_t g, uint8_t bound,
-                  uint8_t last_face)
+/* iterative replacement for expand(). It visits states in the
+ * same order, so nodes and calls must match the recursive version. */
+static int search(uint16_t p, uint16_t o, uint8_t bound)
 {
+    uint8_t g = 0;
+    sp[0] = cp[0] = p;
+    so[0] = co[0] = o;
+    face_at[0] = 0;
+    turn_at[0] = 0;
+    last_at[0] = 255;                       /* no previous face at the root */
     ++calls;
-    for (uint8_t face = 0; face < 3; ++face) {
-        if (face == last_face)
-            continue;
-        uint16_t np = p, no = o;
-        for (uint8_t turn = 0; turn < 3; ++turn) {
-            np = trans_p[face][np];
-            no = trans_o[face][no];
-            ++nodes;                        /* Counted per child */
-            uint8_t hh = h(np, no);         /* h() of the child */
-            if (g + 1 + hh > bound)         /* Prune before the call */
-                continue;
-            path[g] = (uint8_t) (face * 3U + turn);
-            if (hh == 0 || expand(np, no, (uint8_t) (g + 1U), bound, face))
-                return 1;                   /* Solved test on the child */
+    for (;;) {
+        if (turn_at[g] == 3) {              /* all three turns of this face used */
+            ++face_at[g];
+            turn_at[g] = 0;
+            cp[g] = sp[g];
+            co[g] = so[g];
         }
+        if (face_at[g] == last_at[g]) {     /* never turn the same face twice */
+            ++face_at[g];
+            turn_at[g] = 0;
+            cp[g] = sp[g];
+            co[g] = so[g];
+        }
+        if (face_at[g] == 3) {              /* no children left: backtrack */
+            if (g == 0)
+                return 0;
+            --g;
+            continue;
+        }
+        uint8_t face = face_at[g];
+        uint8_t turn = turn_at[g]++;
+        cp[g] = trans_p[face][cp[g]];
+        co[g] = trans_o[face][co[g]];
+        ++nodes;
+        uint8_t hh = h(cp[g], co[g]);
+        if (g + 1 + hh > bound)
+            continue;                       /* pruned: nothing is pushed */
+        path[g] = (uint8_t) (face * 3U + turn);
+        if (hh == 0)
+            return 1;
+        sp[g + 1] = cp[g + 1] = cp[g];      /* push the child */
+        so[g + 1] = co[g + 1] = co[g];
+        face_at[g + 1] = 0;
+        turn_at[g + 1] = 0;
+        last_at[g + 1] = face;
+        ++g;
+        ++calls;
     }
-    return 0;
 }
 
 
@@ -316,7 +339,7 @@ static uint8_t solve(const state_t *state)
     uint8_t h0 = h(p, o);
     for (uint8_t bound = h0; bound <= 11; ++bound) {
         ++nodes;
-        if (h0 == 0 || expand(p, o, 0, bound, 3))
+        if (h0 == 0 || expand(p, o, 0, bound))
             return bound;
     }
     return 255;                  /* should not happen for a valid state */
