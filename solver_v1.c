@@ -276,7 +276,7 @@ static uint8_t h(uint16_t p, uint16_t o)
 
 static uint8_t path[12];        /* the current path: one move per depth */
 static unsigned long nodes;     /* states visited in total */
-static unsigned long calls;     /* Calls expand() how many times */
+static unsigned long calls;     /* Number of states expanded by search() */
 static uint16_t sp[12], so[12];     /* state expanded at this depth */
 static uint16_t cp[12], co[12];     /* state after the turns tried so far */
 static uint8_t face_at[12], turn_at[12], last_at[12];
