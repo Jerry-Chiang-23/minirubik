@@ -81,21 +81,32 @@ static state_t apply_move(state_t state, uint8_t move)
 }
 
 
-static uint16_t rank_p(const state_t *state){
+static uint16_t rank_p(const state_t *state)
+{
     uint16_t p = 0;
     for (uint8_t i = 0; i < CUBIES; ++i) {
         uint8_t smaller = 0;
         for (uint8_t j = (uint8_t) (i + 1U); j < CUBIES; ++j)
             if (state->p[j] < state->p[i])
                 ++smaller;
-        p = (uint16_t)(p * (CUBIES - i) + smaller);
+        switch (i) {
+        case 0: break;
+        case 1: p = (uint16_t) ((p << 2) + (p << 1)); break; /* ×6 */
+        case 2: p = (uint16_t) ((p << 2) + p); break;
+        case 3: p = (uint16_t) (p << 2); break;
+        case 4: p = (uint16_t) ((p << 1) + p); break;
+        case 5: p = (uint16_t) (p << 1); break;
+        default: break;                                      /* ×1 */
+        }
+        p = (uint16_t) (p + smaller);
     }
     return p;
 }
+
 static uint16_t rank_o(const state_t *state){
     uint16_t o = 0;
     for (uint8_t i = 0; i < 6; ++i)
-        o = (uint16_t)(o * 3U + state->o[i]);
+        o = (uint16_t) ((o << 1) + o + state->o[i]);
     return o;
 }
 
@@ -318,7 +329,7 @@ static int search(uint16_t p, uint16_t o, uint8_t bound)
         uint8_t hh = h(cp[g], co[g]);
         if (g + 1 + hh > bound)
             continue;                       /* pruned: nothing is pushed */
-        path[g] = (uint8_t) (face * 3U + turn);
+        path[g] = (uint8_t) ((face << 1) + face + turn);
         if (hh == 0)
             return 1;
         sp[g + 1] = cp[g + 1] = cp[g];      /* push the child */
@@ -408,7 +419,7 @@ static int check_tables(const uint8_t *table)
         return 0;
     }
     puts("H2: transition tables are permutations, four turns return");
-    
+
     uint8_t max_p = 0, max_o = 0;
     for (uint16_t i = 0; i < PERMUTATIONS; ++i) {
         if (pdb_p[i] == UINT8_MAX)
@@ -436,12 +447,14 @@ static int check_tables(const uint8_t *table)
     return pdb_p[0] == 0 && pdb_o[0] == 0 && bad == 0;
 }
 
-/* H3 and worst case: run the search on every state whose exact distance
- * is at least min_d, check that the returned length equals the exact
- * distance, and remember the most expensive distance-11 state. */
+/* H3, T5 and worst case: run the search on every state whose exact
+ * distance is at least min_d. Check that the returned length equals the
+ * exact distance, that applying the returned path solves the state, and
+ * remember the most expensive distance-11 state. */
 static int scan(const uint8_t *table, uint8_t min_d)
 {
     unsigned long checked = 0, wrong = 0, count11 = 0;
+    unsigned long bad_path = 0;
     unsigned long max_nodes = 0, max_calls = 0;
     state_t worst;
     memset(&worst, 0, sizeof worst);
@@ -455,6 +468,16 @@ static int scan(const uint8_t *table, uint8_t min_d)
         ++checked;
         if (len != d)
             ++wrong;
+        /* T5 on the host. Applying the returned path with the
+         * original apply_move() and rank_state() must reach the solved
+         * state. This also catches a wrong move index in path[]. */
+        {
+            state_t t = s;
+            for (uint8_t i = 0; i < len; ++i)
+                t = apply_move(t, path[i]);
+            if (rank_state(&t) != 0)
+                ++bad_path;
+        }
         if (d == 11) {
             ++count11;
             if (nodes > max_nodes) {
@@ -467,6 +490,7 @@ static int scan(const uint8_t *table, uint8_t min_d)
     }
     printf("checked=%lu wrong=%lu distance-11 states=%lu\n",
            checked, wrong, count11);
+    printf("paths that do not solve the state: %lu\n", bad_path);
     printf("distance-11 maximum: nodes=%lu calls=%lu\n", max_nodes, max_calls);
     printf("most expensive distance-11 state: ");
     for (uint8_t i = 0; i < CUBIES; ++i)
@@ -474,7 +498,7 @@ static int scan(const uint8_t *table, uint8_t min_d)
     for (uint8_t i = 0; i < CUBIES; ++i)
         putchar('1' + worst.o[i]);
     putchar('\n');
-    return wrong == 0;
+    return wrong == 0 && bad_path == 0;
 }
 
 static uint8_t *build_table(uint8_t *diameter)
@@ -554,11 +578,15 @@ static int parse_state(const char *input, state_t *state)
         loop assigns i, state->p[0..6], state->o[0..6];
         loop variant 14 - i;
      */
-    for (int i = 0; i < 14; ++i) {
-        int limit = i < 7 ? 7 : 3;
-        if (input[i] < '1' || input[i] > '0' + limit)
+    for (int i = 0; i < 7; ++i) {
+        if (input[i] < '1' || input[i] > '7')
             return 0;
-        (i < 7 ? state->p : state->o)[i % 7] = (uint8_t) (input[i] - '1');
+        state->p[i] = (uint8_t) (input[i] - '1');
+    }
+    for (int i = 0; i < 7; ++i) {
+        if (input[7 + i] < '1' || input[7 + i] > '3')
+            return 0;
+        state->o[i] = (uint8_t) (input[7 + i] - '1');
     }
     return input[14] == '\0' && valid(state);
 }
