@@ -1,3 +1,8 @@
+.frama-c/
+.frama-c-mcp/
+*.swp
+solver
+mini
 solver_v1
 solver_h3
 full.s
