@@ -163,9 +163,10 @@ child_loop:
     slli a1, t3, 1               # co = to[face][co]
     add  a1, a1, a7
     lhu  t3, 0(a1)
-    add  a2, s9, t2              # h = max(pdb_p[cp], pdb_o[co])
+    add  a2, s9, t2              # h_p = pdb_p[cp]
     lbu  a2, 0(a2)
-    add  a3, s10, t3
+    bltu a5, a2, turn_next       # h_p alone already exceeds the limit: skip pdb_o
+    add  a3, s10, t3             # h = max(h_p, pdb_o[co])
     lbu  a3, 0(a3)
     bgeu a2, a3, 1f
     mv   a2, a3
