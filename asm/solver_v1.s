@@ -155,8 +155,7 @@ face_loop:
     jal  ra, sel_tables          # a6 = tp[face], a7 = to[face]
     mv   t2, t0                  # t2 = cp, t3 = co: start from the node's own state
     mv   t3, t1
-    li   t5, 0                   # t5 = turn
-child_loop:
+turn0:                         # turn 1 of this face (unrolled)
     slli a0, t2, 1               # cp = tp[face][cp]
     add  a0, a0, a6
     lhu  t2, 0(a0)
@@ -165,13 +164,51 @@ child_loop:
     lhu  t3, 0(a1)
     add  a2, s9, t2              # h_p = pdb_p[cp]
     lbu  a2, 0(a2)
-    bltu a5, a2, turn_next       # h_p alone already exceeds the limit: skip pdb_o
+    bltu a5, a2, turn1
     add  a3, s10, t3             # h = max(h_p, pdb_o[co])
     lbu  a3, 0(a3)
-    bgeu a2, a3, 1f
+    bgeu a2, a3, 10f
     mv   a2, a3
-1:
-    bltu a5, a2, turn_next       # h > bound - (g + 1): pruned
+10:
+    bltu a5, a2, turn1           # h > bound - (g + 1): pruned
+    li   t5, 0
+    j    survive
+turn1:                         # turn 2 of this face (unrolled)
+    slli a0, t2, 1               # cp = tp[face][cp]
+    add  a0, a0, a6
+    lhu  t2, 0(a0)
+    slli a1, t3, 1               # co = to[face][co]
+    add  a1, a1, a7
+    lhu  t3, 0(a1)
+    add  a2, s9, t2              # h_p = pdb_p[cp]
+    lbu  a2, 0(a2)
+    bltu a5, a2, turn2
+    add  a3, s10, t3             # h = max(h_p, pdb_o[co])
+    lbu  a3, 0(a3)
+    bgeu a2, a3, 11f
+    mv   a2, a3
+11:
+    bltu a5, a2, turn2           # h > bound - (g + 1): pruned
+    li   t5, 1
+    j    survive
+turn2:                         # turn 3 of this face (unrolled)
+    slli a0, t2, 1               # cp = tp[face][cp]
+    add  a0, a0, a6
+    lhu  t2, 0(a0)
+    slli a1, t3, 1               # co = to[face][co]
+    add  a1, a1, a7
+    lhu  t3, 0(a1)
+    add  a2, s9, t2              # h_p = pdb_p[cp]
+    lbu  a2, 0(a2)
+    bltu a5, a2, next_face
+    add  a3, s10, t3             # h = max(h_p, pdb_o[co])
+    lbu  a3, 0(a3)
+    bgeu a2, a3, 12f
+    mv   a2, a3
+12:
+    bltu a5, a2, next_face           # h > bound - (g + 1): pruned
+    li   t5, 2
+survive:                         # the child passed the bound; t5 = its turn
     slli a0, t4, 2               # path[g] = (face << 2) | turn
     or   a0, a0, t5
     add  a1, s11, s2
@@ -190,9 +227,6 @@ child_loop:
     addi s1, s1, 16
     addi s2, s2, 1
     j    node_enter
-turn_next:
-    addi t5, t5, 1
-    blt  t5, a4, child_loop
 next_face:
     addi t4, t4, 1
     blt  t4, a4, face_loop
@@ -209,7 +243,10 @@ next_face:
     sub  a5, s0, s2
     addi a5, a5, -1
     jal  ra, sel_tables
-    j    turn_next               # carry on with the parent's next turn
+    beqz t5, turn1               # carry on with the parent's next turn
+    li   a0, 1
+    beq  t5, a0, turn2
+    j    next_face
 
 sel_tables:                      # a6/a7 = the transition tables of face t4
     mv   a6, s3
