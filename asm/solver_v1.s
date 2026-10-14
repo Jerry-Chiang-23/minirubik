@@ -145,6 +145,7 @@ bound_loop:
     lhu  t0, 0(s1)               # t0 = sp, t1 = so: root ranks
     lhu  t1, 2(s1)
     li   t6, 255                 # t6 = last face: none at the root
+    li   a4, 3                   # a4 = 3 for the whole search (loop limits)
 node_enter:                      # a node: t0/t1 = its p/o ranks, s2 = g
     sub  a5, s0, s2
     addi a5, a5, -1              # a5 = bound - (g + 1): the largest h a child may have
@@ -170,10 +171,10 @@ child_loop:
     mv   a2, a3
 1:
     bltu a5, a2, turn_next       # h > bound - (g + 1): pruned
-    slli a4, t4, 2               # path[g] = (face << 2) | turn
-    or   a4, a4, t5
-    add  a0, s11, s2
-    sb   a4, 0(a0)
+    slli a0, t4, 2               # path[g] = (face << 2) | turn
+    or   a0, a0, t5
+    add  a1, s11, s2
+    sb   a0, 0(a1)
     beqz a2, found
     sh   t0, 0(s1)               # push: save this node's registers, descend
     sh   t1, 2(s1)
@@ -190,12 +191,10 @@ child_loop:
     j    node_enter
 turn_next:
     addi t5, t5, 1
-    li   a0, 3
-    blt  t5, a0, child_loop
+    blt  t5, a4, child_loop
 next_face:
     addi t4, t4, 1
-    li   a0, 3
-    blt  t4, a0, face_loop
+    blt  t4, a4, face_loop
     beqz s2, next_bound          # backtrack from the root: this bound failed
     addi s2, s2, -1              # pop: restore the parent's registers
     addi s1, s1, -16
