@@ -303,6 +303,19 @@ verify_done:
     ecall
     or   t0, s0, s1              # both ranks must be 0
     snez a0, t0                  # 0 = path solves the state, 1 = it does not
+    mv   s4, a0                  # RENDER
+    la   a0, input               # RENDER
+    jal  ra, led_init            # RENDER
+    li   s3, 0                   # RENDER
+led_loop:                        # RENDER
+    bgeu s3, s2, led_done        # RENDER
+    add  t1, s11, s3             # RENDER
+    lbu  a0, 0(t1)               # RENDER
+    jal  ra, led_move            # RENDER
+    addi s3, s3, 1               # RENDER
+    j    led_loop                # RENDER
+led_done:                        # RENDER
+    mv   a0, s4                  # RENDER
     j    exit
 
 invalid:
