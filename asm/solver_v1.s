@@ -120,8 +120,9 @@ rank_o_loop:
     la   s9, pdb_p
     la   s10, pdb_o
     la   s11, path
-    mv   a6, a0                  # keep the root ranks for the path check
-    mv   a7, a1
+    la   s1, frames              # keep the root ranks in frames[0] for the path check
+    sh   a0, 0(s1)
+    sh   a1, 2(s1)
 
 # h(root) = max(pdb_p[p], pdb_o[o])
     add  t0, s9, a0
@@ -141,94 +142,87 @@ rank_o_loop:
 bound_loop:
     la   s1, frames
     li   s2, 0
-    sh   a6, 0(s1)               # sp = cp = p
-    sh   a6, 4(s1)
-    sh   a7, 2(s1)               # so = co = o
-    sh   a7, 6(s1)
-    sb   zero, 8(s1)             # face = 0
-    sb   zero, 9(s1)             # turn = 0
-    li   t0, 255
-    sb   t0, 10(s1)              # no previous face at the root
-
-search_loop:
-    lbu  t0, 9(s1)               # turn
-    li   t6, 3
-    bne  t0, t6, 2f              # all three turns of this face used?
-    lbu  t1, 8(s1)
-    addi t1, t1, 1
-    sb   t1, 8(s1)
-    sb   zero, 9(s1)
-    lhu  t2, 0(s1)
-    sh   t2, 4(s1)
-    lhu  t2, 2(s1)
-    sh   t2, 6(s1)
-2:
-    lbu  t1, 8(s1)               # face
-    lbu  t2, 10(s1)              # last face
-    bne  t1, t2, 3f              # never turn the same face twice
-    addi t1, t1, 1
-    sb   t1, 8(s1)
-    sb   zero, 9(s1)
-    lhu  t2, 0(s1)
-    sh   t2, 4(s1)
-    lhu  t2, 2(s1)
-    sh   t2, 6(s1)
-3:
-    lbu  t1, 8(s1)
-    bne  t1, t6, 4f              # face == 3: no children left
-    beqz s2, next_bound          # backtrack from the root: this bound failed
-    addi s2, s2, -1
-    addi s1, s1, -16
-    j    search_loop
-4:
-    lbu  t0, 9(s1)               # turn, then turn + 1
-    addi t2, t0, 1
-    sb   t2, 9(s1)
-    mv   t3, s3                  # select the face's two tables
-    mv   t4, s6
-    beqz t1, 5f
-    mv   t3, s4
-    mv   t4, s7
-    li   t5, 1
-    beq  t1, t5, 5f
-    mv   t3, s5
-    mv   t4, s8
-5:
-    lhu  t2, 4(s1)               # cp = tp[face][cp]
-    slli t2, t2, 1
-    add  t2, t3, t2
-    lhu  t2, 0(t2)
-    sh   t2, 4(s1)
-    lhu  t5, 6(s1)               # co = to[face][co]
-    slli t5, t5, 1
-    add  t5, t4, t5
-    lhu  t5, 0(t5)
-    sh   t5, 6(s1)
-    add  a2, s9, t2              # hh = max(pdb_p[cp], pdb_o[co])
+    lhu  t0, 0(s1)               # t0 = sp, t1 = so: root ranks
+    lhu  t1, 2(s1)
+    li   t6, 255                 # t6 = last face: none at the root
+node_enter:                      # a node: t0/t1 = its p/o ranks, s2 = g
+    sub  a5, s0, s2
+    addi a5, a5, -1              # a5 = bound - (g + 1): the largest h a child may have
+    li   t4, 0                   # t4 = face
+face_loop:
+    beq  t4, t6, next_face       # never turn the same face twice
+    jal  ra, sel_tables          # a6 = tp[face], a7 = to[face]
+    mv   t2, t0                  # t2 = cp, t3 = co: start from the node's own state
+    mv   t3, t1
+    li   t5, 0                   # t5 = turn
+child_loop:
+    slli a0, t2, 1               # cp = tp[face][cp]
+    add  a0, a0, a6
+    lhu  t2, 0(a0)
+    slli a1, t3, 1               # co = to[face][co]
+    add  a1, a1, a7
+    lhu  t3, 0(a1)
+    add  a2, s9, t2              # h = max(pdb_p[cp], pdb_o[co])
     lbu  a2, 0(a2)
-    add  a3, s10, t5
+    add  a3, s10, t3
     lbu  a3, 0(a3)
-    bgeu a2, a3, 6f
+    bgeu a2, a3, 1f
     mv   a2, a3
-6:
-    addi a3, s2, 1               # g + 1 + hh > bound: pruned
-    add  a4, a3, a2
-    bltu s0, a4, search_loop
-    slli a4, t1, 2               # path[g] = (face << 2) | turn
-    or   a4, a4, t0
-    add  a5, s11, s2
-    sb   a4, 0(a5)
+1:
+    bltu a5, a2, turn_next       # h > bound - (g + 1): pruned
+    slli a4, t4, 2               # path[g] = (face << 2) | turn
+    or   a4, a4, t5
+    add  a0, s11, s2
+    sb   a4, 0(a0)
     beqz a2, found
-    sh   t2, 16(s1)              # push the child: sp = cp, so = co
-    sh   t2, 20(s1)
-    sh   t5, 18(s1)
-    sh   t5, 22(s1)
-    sb   zero, 24(s1)            # face = 0
-    sb   zero, 25(s1)            # turn = 0
-    sb   t1, 26(s1)              # last face = face
+    sh   t0, 0(s1)               # push: save this node's registers, descend
+    sh   t1, 2(s1)
+    sh   t2, 4(s1)
+    sh   t3, 6(s1)
+    sb   t4, 8(s1)
+    sb   t5, 9(s1)
+    sb   t6, 10(s1)
+    mv   t0, t2                  # the child's p/o are cp/co
+    mv   t1, t3
+    mv   t6, t4                  # the child's last face is this face
     addi s1, s1, 16
     addi s2, s2, 1
-    j    search_loop
+    j    node_enter
+turn_next:
+    addi t5, t5, 1
+    li   a0, 3
+    blt  t5, a0, child_loop
+next_face:
+    addi t4, t4, 1
+    li   a0, 3
+    blt  t4, a0, face_loop
+    beqz s2, next_bound          # backtrack from the root: this bound failed
+    addi s2, s2, -1              # pop: restore the parent's registers
+    addi s1, s1, -16
+    lhu  t0, 0(s1)
+    lhu  t1, 2(s1)
+    lhu  t2, 4(s1)
+    lhu  t3, 6(s1)
+    lbu  t4, 8(s1)
+    lbu  t5, 9(s1)
+    lbu  t6, 10(s1)
+    sub  a5, s0, s2
+    addi a5, a5, -1
+    jal  ra, sel_tables
+    j    turn_next               # carry on with the parent's next turn
+
+sel_tables:                      # a6/a7 = the transition tables of face t4
+    mv   a6, s3
+    mv   a7, s6
+    beqz t4, 2f
+    mv   a6, s4
+    mv   a7, s7
+    li   a0, 1
+    beq  t4, a0, 2f
+    mv   a6, s5
+    mv   a7, s8
+2:
+    ret
 
 next_bound:
     addi s0, s0, 1
@@ -246,8 +240,9 @@ found:
 #   t0 = index, s0/s1 = current p/o ranks (the search no longer needs them)
 # ---------------------------------------------------------------------------
 verify:
-    mv   s0, a6
-    mv   s1, a7
+    la   t1, frames              # the root ranks saved in frames[0]
+    lhu  s0, 0(t1)
+    lhu  s1, 2(t1)
     li   a7, 11                  # every print below is "print character"
     li   t0, 0
 verify_loop:
