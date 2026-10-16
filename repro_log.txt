@@ -1,0 +1,13 @@
+== environment ==
+Thu Oct 15 21:23:12 CST 2026
+Linux Win11-P071149C 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+git HEAD: 4aa9fcb   tables: 4f582a36dd8c8878
+riscv64-unknown-elf-gcc (13.2.0-11ubuntu1+12) 13.2.0
+Ripes: /mnt/d/Ripes-v2.2.6/Ripes.exe
+
+== A-E: retired instructions (RV32_ISS), exit code ==
+commit    input                   retired  exit
+0450832   25416373331111          2742340     0
+0450832   21345671111111         10276274     0
+0450832   54721631111111         28092269     0
+527ded6   25416373331111          1754235     0
